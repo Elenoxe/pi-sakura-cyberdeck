@@ -222,12 +222,7 @@ export function renderBoxedLine(
 	}
 	const innerWidth = Math.max(0, width - leftWidth - rightWidth);
 	// Never use default truncate ellipsis ("...") — empty string only.
-	// Also drop only a pure trailing ... marker from prior truncators (not mid-line).
-	let plainish = line;
-	if (/(?:…|\.\.\.)\s*$/u.test(plainish) && visibleWidth(plainish) >= innerWidth) {
-		plainish = plainish.replace(/(?:…|\.\.\.)\s*$/u, "");
-	}
-	let content = truncateToWidth(plainish, innerWidth, "");
+	let content = truncateToWidth(line, innerWidth, "");
 	// Hard-fit: SGR / width drift can leave content 1 cell over.
 	let guard = 0;
 	while (visibleWidth(content) > innerWidth && content.length > 0 && guard++ < 8) {

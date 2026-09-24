@@ -1,5 +1,6 @@
+import { stripVTControlCharacters } from "node:util";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { renderSakuraGradient, type RGB } from "./gradient";
+import type { RGB } from "./gradient";
 
 export type DiffStats = { added: number; removed: number };
 
@@ -31,24 +32,7 @@ function themeOr(theme: ThemeLike | undefined, key: string, fallback: RGB, text:
 }
 
 export function stripAnsi(text: string): string {
-	return text
-		.replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
-		.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
-}
-
-/** Drop Box full-width padding / trailing spaces. */
-function plainTrim(text: string): string {
-	return text.replace(/[\t ]+$/g, "").replace(/^\s+$/g, "");
-}
-
-/** Drop trailing truncator junk only (long lines). Keep real `foo...`. */
-function stripTrailingEllipsis(text: string): string {
-	const t = text.replace(/[\t ]+$/g, "");
-	// Width-truncators leave ... on long padded rows; short code tails stay.
-	if (t.length >= 48 && /(?:\u2026|\.\.\.|…)$/u.test(t)) {
-		return t.replace(/(?:\u2026|\.\.\.|…)+$/u, "").replace(/[\t ]+$/g, "");
-	}
-	return t;
+	return stripVTControlCharacters(text);
 }
 
 
@@ -136,25 +120,6 @@ function maxLineNumWidth(plains: readonly string[]): number {
 	return max;
 }
 
-function styleToolTitle(plain: string, theme?: ThemeLike): string | null {
-	const dollar = plain.match(/^\$\s+(.+)$/);
-	if (dollar) {
-		return `${themeOr(theme, "bashMode", MINT, "❯")} ${themeOr(theme, "toolTitle", SKY, dollar[1] ?? "")}`;
-	}
-
-	// Builtins + snake_case extension tools (xai_grok_run_terminal_command, etc.)
-	const match = plain.match(
-		/^(edit|write|read|bash|grep|find|ls|ffgrep|fffind|search_replace|run_terminal_command|[a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b(\s+.*)?$/i,
-	);
-	if (!match) return null;
-	const rawName = match[1] ?? "";
-	const rest = (match[2] ?? "").trim();
-	// No leading glyph — border already has status chrome; keep body consistent.
-	const title = renderSakuraGradient(rawName);
-	if (!rest) return title;
-	// Path in sakura so it matches repeated path lines below (same content, same color).
-	return `${title}  ${themeOr(theme, "accent", SAKURA, rest)}`;
-}
 
 /**
  * Delta-inspired gutter:
@@ -220,9 +185,6 @@ function styleGenericBodyLine(plain: string, original: string, theme?: ThemeLike
 	if (/^(Successfully|Wrote|ok|complete)\b/i.test(plain)) {
 		return `${themeOr(theme, "success", MINT, "✓")} ${themeOr(theme, "success", MINT, plain)}`;
 	}
-	// Always restyle from plain — full-width Box ANSI lines cause right-edge "..." when re-boxed.
-	const titled = styleToolTitle(plain.trim(), theme);
-	if (titled) return titled;
 	if (looksLikePathLine(plain)) return stylePathLine(plain, theme);
 
 	// key: value / key=value soft accent
@@ -250,25 +212,13 @@ export function beautifyToolBody(
 
 	for (let i = 0; i < lines.length; i++) {
 		const original = lines[i] ?? "";
-		// Box pads every line to full terminal width; always restyle from trimmed plain
-		// so we never re-box a full-width predecessor line (that caused right-edge "...").
-		// plainTrim drops trailing pad; strip one leading Box paddingX space so parseDiffLine
-		// and titles see Pi-native text (not " -12 ..." / " title").
-		let plain = stripTrailingEllipsis(plainTrim(plains[i] ?? ""));
-		if (plain.startsWith(" ") && plain.length > 1) {
-			// Keep intentional indent (2+ spaces); only peel single box pad.
-			if (plain[1] !== " ") plain = plain.slice(1);
-		}
+		// Padding cannot be distinguished from source indentation here.
+		const plain = plains[i] ?? "";
 		if (!plain) {
 			if (out.length > 0 && out[out.length - 1] !== "") out.push("");
 			continue;
 		}
 
-		const titled = styleToolTitle(plain, theme);
-		if (titled) {
-			out.push(titled);
-			continue;
-		}
 
 		if (isDiff) {
 			const parsed = parseDiffLine(plain);
@@ -319,11 +269,7 @@ function summarizeHugePayload(
 	// Skip cmd when it duplicates the title line already shown above.
 	const skip = (options.skipCmd ?? "").trim();
 	if (cmd.trim() && cmd.trim() !== skip) {
-		const titled = styleToolTitle(cmd.trim(), theme);
-		head.push(
-			titled ??
-				themeOr(theme, "toolTitle", SKY, truncatePlain(cmd.trim(), TOOL_COLLAPSED_MAX_LINE_CHARS)),
-		);
+		head.push(themeOr(theme, "toolTitle", SKY, truncatePlain(cmd, TOOL_COLLAPSED_MAX_LINE_CHARS)));
 	}
 	if (path) head.push(stylePathLine(path, theme));
 	head.push(themeOr(theme, "dim", DIM_RGB, `${lines} lines · ~${Math.round(bytes / 1024)}KB · expand to show`));
@@ -355,14 +301,8 @@ export function compactToolBody(
 
 	const plains = lines.map((l) => stripAnsi(l));
 	if (isHeredocOrHugeWrite(plains)) {
-		// Restyle title so it matches macaron chrome (drop foreign cyan ANSI).
-		const firstPlain = lines[0] ? stripAnsi(lines[0]).trim() : "";
-		const titleLine =
-			firstPlain && !firstPlain.includes("{")
-				? styleToolTitle(firstPlain, theme) ??
-					themeOr(theme, "toolTitle", SKY, firstPlain)
-				: undefined;
-		const title = titleLine ? [titleLine] : [];
+		const firstPlain = plains[0] ?? "";
+		const title = firstPlain && !firstPlain.includes("{") ? [lines[0]!] : [];
 		return [...title, ...summarizeHugePayload(plains, theme, { skipCmd: firstPlain })];
 	}
 

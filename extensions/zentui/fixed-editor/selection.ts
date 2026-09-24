@@ -7,35 +7,8 @@
  * @internal
  */
 
+import { stripVTControlCharacters as stripAnsi } from "node:util";
 import { visibleWidth } from "@earendil-works/pi-tui";
-
-/** ANSI / OSC escape sequence patterns for stripping. */
-const ANSI_RE = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
-const OSC_RE = /\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g;
-
-function stripAnsi(line: string): string {
-	return line.replace(OSC_RE, "").replace(ANSI_RE, "");
-}
-
-/** OSC 8 hyperlink: \x1b]8;;params ST TEXT \x1b]8;; ST
- * Supports both ST (\x1b\\) and BEL (\x07) terminators. */
-const OSC8_RE = /\x1b\]8;;([^\x1b\x07]*)(?:\x07|\x1b\\)([\s\S]*?)\x1b\]8;;(?:\x07|\x1b\\)/g;
-
-/**
- * Replace OSC 8 hyperlinks with their URL before stripping.
- * Format: \x1b]8;;[key=val;]URL\x1b\\TEXT\x1b]8;;\x1b\\
- * If the URL differs from the visible text, both are included.
- */
-function extractOsc8Links(line: string): string {
-	return line.replace(OSC8_RE, (_match, params: string, text: string) => {
-		const parts = params.split(";");
-		const url = parts[parts.length - 1] ?? "";
-		const visible = stripAnsi(text);
-		if (!url) return visible;
-		if (visible && visible !== url) return `${visible} ${url}`;
-		return url;
-	});
-}
 
 const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
@@ -123,7 +96,8 @@ export class SelectionState {
 
 		const selected: string[] = [];
 		for (let i = b.start.line; i <= b.end.line; i++) {
-			const plain = stripAnsi(extractOsc8Links(lines[i] ?? ""));
+			// Copy visible text only; expanding URLs would shift screen-column offsets.
+			const plain = stripAnsi(lines[i] ?? "");
 			const startCol = i === b.start.line ? b.start.col : 0;
 			const endCol = i === b.end.line ? b.end.col : Number.POSITIVE_INFINITY;
 			selected.push(sliceColumns(plain, startCol, endCol));

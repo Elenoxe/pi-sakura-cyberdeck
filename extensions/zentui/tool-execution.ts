@@ -40,6 +40,10 @@ type ToolExecutionRuntime = {
 	expanded?: boolean;
 	showImages?: boolean;
 	getRenderShell?: () => "default" | "self";
+	toolDefinition?: {
+		renderCall?: unknown;
+		renderResult?: unknown;
+	};
 };
 
 type SettledRender = {
@@ -110,8 +114,19 @@ export function installToolExecutionStyle(getTheme: () => Theme | undefined): Cl
 		({ predecessor, receiver, args }) => {
 			const width = args[0];
 			const runtime = receiver as ToolExecutionRuntime;
+			// Only self-shell tools own their frame as well as their body.
+			if (runtime.getRenderShell?.() === "self") {
+				return Reflect.apply(predecessor, receiver, args);
+			}
+			const customBody =
+				typeof runtime.toolDefinition?.renderCall === "function" ||
+				typeof runtime.toolDefinition?.renderResult === "function";
+			const theme = getTheme();
+			if (customBody && (typeof width !== "number" || width <= 3 || !theme || containsResultImage(runtime))) {
+				return Reflect.apply(predecessor, receiver, args);
+			}
 			if (
-				typeof width === "number" &&
+				!customBody && typeof width === "number" &&
 				runtime.isPartial === false &&
 				!runtime.hideComponent &&
 				!containsResultImage(runtime)
@@ -127,7 +142,8 @@ export function installToolExecutionStyle(getTheme: () => Theme | undefined): Cl
 				}
 			}
 
-			const rendered = Reflect.apply(predecessor, receiver, args);
+			// Reserve two left-rail cells and one right-rail cell before layout.
+			const rendered = Reflect.apply(predecessor, receiver, customBody ? [Number(width) - 3, ...args.slice(1)] : args);
 			if (!Array.isArray(rendered) || !rendered.every((line) => typeof line === "string")) {
 				return rendered;
 			}
@@ -141,10 +157,7 @@ export function installToolExecutionStyle(getTheme: () => Theme | undefined): Cl
 			) {
 				return lines;
 			}
-			// Note: also polish renderShell:"self" tools (edit/bash) — strip their full-width
-			// Box padding and re-frame so we never inherit right-edge "..." junk.
 
-			const theme = getTheme();
 			if (!theme) return lines;
 			const pending = runtime.isPartial !== false;
 
@@ -155,12 +168,13 @@ export function installToolExecutionStyle(getTheme: () => Theme | undefined): Cl
 				if (blank !== undefined) prefix.push(blank);
 			}
 
-			const polished = beautifyToolBody(body, theme);
-			const bodyLines = compactToolBody(polished.lines, {
+			// Custom renderers own styling and expansion; Sakura only adds chrome.
+			const polished = customBody ? undefined : beautifyToolBody(body, theme);
+			const bodyLines = polished ? compactToolBody(polished.lines, {
 				expanded: Boolean(runtime.expanded),
 				theme,
-			});
-			const statsText = formatStats(polished.stats);
+			}) : body;
+			const statsText = polished ? formatStats(polished.stats) : "";
 			const label = fitBorderLabel(statusLabel(runtime, statsText), width);
 			const leftRail = leftRailFor(runtime, theme);
 			const rightRail = renderSakuraSolid("│"); // single cell — no leading space (was " │", ate width)
@@ -173,7 +187,7 @@ export function installToolExecutionStyle(getTheme: () => Theme | undefined): Cl
 				...bodyLines.map((line) => renderBoxedLine(line, width, leftRail, rightRail)),
 				bottom,
 			];
-			if (!pending && !containsResultImage(runtime) && isCacheableSettledRender(boxed)) {
+			if (!customBody && !pending && !containsResultImage(runtime) && isCacheableSettledRender(boxed)) {
 				settledRenders.set(receiver as object, {
 					width,
 					result: runtime.result,
