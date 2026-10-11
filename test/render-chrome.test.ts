@@ -7,7 +7,8 @@ import {
 	UserMessageComponent,
 } from "@earendil-works/pi-coding-agent";
 import { type Component, Container, Text, visibleWidth } from "@earendil-works/pi-tui";
-import type { PolishedTuiConfig } from "../extensions/zentui/config";
+import { mergeConfig } from "../extensions/zentui/config";
+import { getColorMode, setColorMode } from "../extensions/shared/color";
 import { patchSelectorBorderStyle } from "../extensions/zentui/selector-border";
 import {
 	applyThinkingLabel,
@@ -25,15 +26,13 @@ const strip = (s: string) =>
 const stockToolRender = ToolExecutionComponent.prototype.render;
 const stockUserRender = UserMessageComponent.prototype.render;
 
-const config = {
-	features: { copyFriendly: false },
-	icons: { rail: "▐" },
-} as unknown as PolishedTuiConfig;
+const config = mergeConfig({ features: { copyFriendly: false }, icons: { rail: "▐" } });
+const chromeTheme = { fg: (_color: string, text: string) => text };
 
 let cleanups: Array<() => void> = [];
 before(() => {
 	initTheme("dark");
-	cleanups = [installToolExecutionStyle(), installUserMessageStyle(undefined, () => config)];
+	cleanups = [installToolExecutionStyle(), installUserMessageStyle(() => chromeTheme, () => config)];
 });
 after(() => {
 	for (const cleanup of cleanups.reverse()) cleanup();
@@ -212,8 +211,8 @@ test("user message keeps Pi's markdown options, transforms and OSC 133 markers",
 });
 
 test("user message honours copy-friendly mode (no rail, full-width body)", () => {
-	const copyConfig = { features: { copyFriendly: true }, icons: { rail: "▐" } } as unknown as PolishedTuiConfig;
-	const cleanup = installUserMessageStyle(undefined, () => copyConfig);
+	const copyConfig = mergeConfig({ features: { copyFriendly: true }, icons: { rail: "▐" } });
+	const cleanup = installUserMessageStyle(() => chromeTheme, () => copyConfig);
 	try {
 		const user = new UserMessageComponent("hello");
 		const out = user.render(40);
@@ -221,7 +220,7 @@ test("user message honours copy-friendly mode (no rail, full-width body)", () =>
 		assert.deepEqual(out.slice(1, -1), inner);
 	} finally {
 		cleanup();
-		cleanups[1] = installUserMessageStyle(undefined, () => config);
+		cleanups[1] = installUserMessageStyle(() => chromeTheme, () => config);
 	}
 });
 
@@ -268,4 +267,53 @@ test("thinking label uses the public setHiddenThinkingLabel API and fails safe",
 			},
 		}),
 	);
+});
+
+test("user-message colors follow their source and invalidate cached chrome without changing the body", () => {
+	let current = mergeConfig({
+		colorSources: { userMessages: "theme" },
+		colors: { editorAccent: "blue", editorBorder: "blue" },
+	});
+	let themeCode = 36;
+	const theme = { fg: (color: string, text: string) => {
+		assert.equal(color, "syntaxFunction");
+		return `\x1b[${themeCode}m${text}\x1b[0m`;
+	} };
+	const mode = getColorMode();
+	const cleanup = installUserMessageStyle(() => theme, () => current);
+	try {
+		setColorMode("truecolor");
+		const user = new UserMessageComponent("hello **world**");
+		const themed = user.render(40);
+		assert.ok(themed[0]!.includes("\x1b[36m"));
+		assert.ok(themed[1]!.includes("\x1b[36m"));
+		assert.equal(user.render(40), themed);
+		current = mergeConfig({ ...current, colorSources: { userMessages: "terminal" } });
+		const terminal = user.render(40);
+		assert.notEqual(terminal, themed);
+		assert.ok(terminal[0]!.includes("\x1b[34m"));
+		assert.ok(terminal[1]!.includes("\x1b[34m"));
+		assert.deepEqual(terminal.map(strip), themed.map(strip));
+		current = mergeConfig({ ...current, colors: { editorAccent: "#010203", editorBorder: "#010203" } });
+		const hex = user.render(40);
+		assert.ok(hex[0]!.includes("\x1b[38;2;1;2;3m"));
+		setColorMode("256color");
+		assert.ok(user.render(40)[0]!.includes("\x1b[38;5;"));
+		current = mergeConfig({ ...current, colors: { editorAccent: "blue", editorBorder: "blue" },
+			colorSources: { userMessages: "theme" } });
+		themeCode = 35;
+		assert.ok(user.render(40)[0]!.includes("\x1b[35m"), "live theme changes rebuild chrome");
+		setColorMode("none");
+		const uncolored = user.render(40);
+		assert.equal(uncolored[0], "─".repeat(40));
+		const inner = stockUserRender.call(user, 38);
+		for (let i = 0; i < inner.length; i++) {
+			const body = inner[i]!.replace(/^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/, "");
+			assert.ok(uncolored[i + 1]!.endsWith(body), "stock body stays byte-for-byte");
+		}
+	} finally {
+		setColorMode(mode);
+		cleanup();
+		cleanups[1] = installUserMessageStyle(() => chromeTheme, () => config);
+	}
 });

@@ -254,7 +254,7 @@ export default function (pi: ExtensionAPI) {
 	const installPrototypePatches = (ctx: ExtensionContext) => {
 		if (prototypePatchesInstalled) return;
 		const cleanupSelectorBorderStyle = installSelectorBorderStyle(getActiveTheme, getCurrentConfig);
-		const cleanupUserMessageStyle = installUserMessageStyle(getActiveTheme, getCurrentConfig);
+		const cleanupUserMessageStyle = installUserMessageStyle(() => ctx.ui.theme, getCurrentConfig);
 		const cleanupToolExecutionStyle = installToolExecutionStyle(getActiveTheme);
 		cleanupPrototypePatches = () => {
 			cleanupToolExecutionStyle();

@@ -1,12 +1,18 @@
-import { type Theme, UserMessageComponent } from "@earendil-works/pi-coding-agent";
+import { UserMessageComponent } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { getColorMode, paintFg, type RGB } from "../shared/color";
+import { getColorMode } from "../shared/color";
 import type { PolishedTuiConfig } from "./config";
-import { renderSakuraFrameGradient } from "./gradient";
+import { renderSakuraFrameGradient, SAKURA_MACARON_GRADIENT } from "./gradient";
+import {
+	EDITOR_ACCENT_FALLBACK,
+	EDITOR_BORDER_FALLBACK,
+	renderStyleForSourceOrFallback,
+	type ThemeLike,
+} from "./style";
 import { installPrototypePatch } from "./prototype-patch-registry";
 
 /**
- * User prompt chrome: gradient hairlines above/below plus a sakura rail on the left.
+ * User prompt chrome: editor-configured borders/rail, using the user-message color source.
  *
  * The message body is Pi's own UserMessageComponent render (markdown options, extension
  * markdown transformers, outputPad, OSC 133 prompt markers) at the reduced width, passed through
@@ -22,7 +28,6 @@ type UserMessageCard = {
 	lines: string[];
 };
 
-const RAIL_RGB: RGB = [242, 167, 198];
 const MIN_WIDTH = 8;
 
 function sameLines(a: readonly string[], b: readonly string[]): boolean {
@@ -31,8 +36,8 @@ function sameLines(a: readonly string[], b: readonly string[]): boolean {
 	return true;
 }
 
-function railFor(config: PolishedTuiConfig | undefined): { text: string; columns: number } {
-	if (!config || config.features?.copyFriendly) return { text: "", columns: 0 };
+function railFor(config: PolishedTuiConfig): { text: string; columns: number } {
+	if (config.features.copyFriendly) return { text: "", columns: 0 };
 	const glyph = typeof config.icons?.rail === "string" ? config.icons.rail : "▐";
 	// Control characters would corrupt the row; fall back to the default glyph.
 	const safe = /[\u0000-\u001f\u007f-\u009f]/.test(glyph) || visibleWidth(glyph) > 2 ? "▐" : glyph;
@@ -40,8 +45,7 @@ function railFor(config: PolishedTuiConfig | undefined): { text: string; columns
 	return { text, columns: visibleWidth(text) };
 }
 
-export function renderUserMessageCard(inner: readonly string[], width: number, rail: string): string[] {
-	const border = renderSakuraFrameGradient("─".repeat(width));
+export function renderUserMessageCard(inner: readonly string[], rail: string, border: string): string[] {
 	const lines: string[] = [border];
 	for (const line of inner) {
 		// Pi's fullscreen filtering and prompt navigation require OSC 133 at the row start.
@@ -53,8 +57,8 @@ export function renderUserMessageCard(inner: readonly string[], width: number, r
 }
 
 export function installUserMessageStyle(
-	_getTheme?: () => Theme | undefined,
-	getConfig?: () => PolishedTuiConfig,
+	getTheme: () => ThemeLike,
+	getConfig: () => PolishedTuiConfig,
 ): Cleanup {
 	const cards = new WeakMap<object, UserMessageCard>();
 	return installPrototypePatch(
@@ -66,13 +70,26 @@ export function installUserMessageStyle(
 			if (typeof width !== "number" || width < MIN_WIDTH) {
 				return Reflect.apply(predecessor, receiver, args);
 			}
-			const rail = railFor(getConfig?.());
+			const config = getConfig();
+			const rail = railFor(config);
 			const inner = Reflect.apply(predecessor, receiver, [width - rail.columns, ...args.slice(1)]);
 			if (!Array.isArray(inner) || inner.length === 0) return inner;
 
 			const lines = inner as string[];
 			const colorMode = getColorMode();
-			const chromeKey = `${rail.text}\0${colorMode}`;
+			const theme = getTheme();
+			const source = config.colorSources.userMessages;
+			const styledRail = !rail.text || colorMode === "none" ? rail.text : renderStyleForSourceOrFallback(
+				theme, source, config.colors.editorAccent, EDITOR_ACCENT_FALLBACK, rail.text,
+			);
+			const borderText = "─".repeat(width);
+			const border = colorMode === "none" ? borderText
+				: config.colors.editorBorder === SAKURA_MACARON_GRADIENT
+					? renderSakuraFrameGradient(borderText)
+					: renderStyleForSourceOrFallback(
+							theme, source, config.colors.editorBorder, EDITOR_BORDER_FALLBACK, borderText,
+						);
+			const chromeKey = `${styledRail}\0${border}`;
 			const cached = cards.get(receiver as object);
 			if (
 				cached &&
@@ -82,7 +99,7 @@ export function installUserMessageStyle(
 			) {
 				return cached.lines;
 			}
-			const card = renderUserMessageCard(lines, width, rail.text ? paintFg(RAIL_RGB, rail.text) : "");
+			const card = renderUserMessageCard(lines, styledRail, border);
 			cards.set(receiver as object, { width, chromeKey, inner: lines, lines: card });
 			return card;
 		},
