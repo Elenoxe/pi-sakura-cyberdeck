@@ -43,7 +43,11 @@ function railFor(config: PolishedTuiConfig | undefined): { text: string; columns
 export function renderUserMessageCard(inner: readonly string[], width: number, rail: string): string[] {
 	const border = renderSakuraFrameGradient("─".repeat(width));
 	const lines: string[] = [border];
-	for (const line of inner) lines.push(rail ? `${rail}${line}` : line);
+	for (const line of inner) {
+		// Pi's fullscreen filtering and prompt navigation require OSC 133 at the row start.
+		const markers = line.match(/^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/)?.[0] ?? "";
+		lines.push(`${markers}${rail}${line.slice(markers.length)}`);
+	}
 	lines.push(border);
 	return lines;
 }

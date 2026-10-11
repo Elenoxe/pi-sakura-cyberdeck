@@ -199,14 +199,15 @@ test("user message keeps Pi's markdown options, transforms and OSC 133 markers",
 	assert.match(strip(out[0]!), /^─{50}$/);
 	assert.match(strip(out.at(-1)!), /^─{50}$/);
 	for (let i = 0; i < inner.length; i++) {
-		assert.ok(out[i + 1]!.endsWith(inner[i]!), `inner line ${i} passed through`);
+		const body = inner[i]!.replace(/^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/, "");
+		assert.ok(out[i + 1]!.endsWith(body), `inner body line ${i} passed through`);
 		assert.equal(strip(out[i + 1]!), `▐ ${strip(inner[i]!)}`);
 	}
 	const plain = out.map(strip).join("\n");
 	assert.ok(plain.includes("1) first"), "ordered list marker preserved");
 	assert.ok(plain.includes("*not emphasis*") || plain.includes("\\*not emphasis\\*"));
-	assert.ok(out[1]!.includes("\x1b]133;A\x07"));
-	assert.ok(out.at(-2)!.includes("\x1b]133;B\x07\x1b]133;C\x07"));
+	assert.ok(out[1]!.startsWith("\x1b]133;A\x07"), "prompt start stays at the row start");
+	assert.ok(out.at(-2)!.startsWith("\x1b]133;B\x07\x1b]133;C\x07"), "zone end stays at the row start");
 	assert.equal(user.render(width), out, "cached while unchanged");
 });
 
