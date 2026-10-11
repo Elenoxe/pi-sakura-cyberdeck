@@ -258,6 +258,7 @@ class ChangelogViewer implements Component {
 			this.lastWidth = width;
 		}
 		const size = this.pageSize();
+		this.offset = Math.max(0, Math.min(this.offset, this.cache.length - size));
 		const visible = this.cache.slice(this.offset, this.offset + size);
 		const end = Math.min(this.cache.length, this.offset + size);
 		const footer = this.theme.fg(

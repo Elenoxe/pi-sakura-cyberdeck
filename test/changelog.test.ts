@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import {
+import sakuraChangelog, {
 	compareVersions,
 	parseChangelog,
 	renderChangelogLines,
@@ -73,4 +73,42 @@ test("shipped CHANGELOG.md has an entry for the package version", () => {
 	const entries = parseChangelog(readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8"));
 	assert.equal(entries[0]?.version, pkg.version);
 	assert.ok(entries[0]!.sections.some((s) => /highlight/i.test(s.title)));
+});
+
+test("changelog viewer clamps its scroll offset after width and height changes", async () => {
+	let command: { handler: (args: string, ctx: never) => Promise<void> } | undefined;
+	sakuraChangelog({
+		on() {},
+		registerCommand(_name: string, definition: typeof command) { command = definition; },
+	} as never);
+	assert.ok(command);
+	const entries = parseChangelog(readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8"));
+	const terminal = { rows: 16 };
+	await command.handler("", {
+		hasUI: true, mode: "tui",
+		ui: {
+			custom: async (factory: (...args: never[]) => {
+				render: (width: number) => string[]; handleInput: (key: string) => void; invalidate: () => void;
+			}) => {
+				const viewer = factory({ terminal, requestRender() {} } as never, plain, {} as never, (() => {}) as never);
+				viewer.render(32);
+				viewer.handleInput("G");
+				for (const [width, rows] of [[160, 16], [160, 48], [80, 48]]) {
+					terminal.rows = rows!;
+					const rendered = viewer.render(width!);
+					const all = renderChangelogLines(entries, width!, plain);
+					const size = Math.max(5, Math.min(40, rows! - 8));
+					const range = rendered.at(-1)!.match(/(\d+)-(\d+)\/(\d+)/);
+					assert.ok(range, rendered.at(-1));
+					const [start, end, total] = range.slice(1).map(Number);
+					assert.ok(start! <= end! && end! <= total!, rendered.at(-1));
+					assert.equal(total, all.length);
+					assert.deepEqual(rendered.slice(0, -2), all.slice(start! - 1, end));
+					assert.equal(rendered.length - 2, Math.min(size, all.length));
+				}
+				viewer.invalidate();
+				assert.ok(viewer.render(80).length > 2);
+			},
+		},
+	} as never);
 });
