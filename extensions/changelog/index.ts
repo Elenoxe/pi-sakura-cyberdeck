@@ -114,12 +114,20 @@ function countBullets(entry: ChangelogEntry): number {
 
 type Paint = Pick<Theme, "fg" | "bold">;
 
+function wrapIndented(text: string, width: number, indent: string, hanging: string): string[] {
+	// Reduce indentation on tiny terminals, leaving room for a double-width grapheme.
+	const maxIndent = Math.max(0, width - 2);
+	const first = indent.slice(0, maxIndent);
+	const continuation = hanging.slice(0, maxIndent);
+	return wrapTextWithAnsi(text, Math.max(1, width - continuation.length))
+		.map((part, index) => `${index === 0 ? first : continuation}${part}`);
+}
+
 /** Full changelog lines (used by the scrollable viewer). */
 export function renderChangelogLines(entries: ChangelogEntry[], width: number, theme: Paint): string[] {
 	const out: string[] = [];
 	const wrap = (text: string, indent: string, hanging: string) => {
-		const body = wrapTextWithAnsi(text, Math.max(10, width - hanging.length));
-		body.forEach((part, index) => out.push(`${index === 0 ? indent : hanging}${part}`));
+		out.push(...wrapIndented(text, width, indent, hanging));
 	};
 	for (const entry of entries) {
 		if (out.length) out.push("");
@@ -156,8 +164,7 @@ export function renderNoticeLines(entries: ChangelogEntry[], width: number, them
 		s.lines.filter((l) => isBullet(l) && !/^\s{2,}/.test(l)),
 	);
 	for (const line of pool.slice(0, MAX_NOTICE_BULLETS)) {
-		const wrapped = wrapTextWithAnsi(`${theme.fg("dim", "•")} ${bulletText(line)}`, Math.max(10, width - 2));
-		wrapped.forEach((part, index) => lines.push(`${index === 0 ? "  " : "    "}${part}`));
+		lines.push(...wrapIndented(`${theme.fg("dim", "•")} ${bulletText(line)}`, width, "  ", "    "));
 	}
 	const total = entries.reduce((n, e) => n + countBullets(e), 0);
 	lines.push(

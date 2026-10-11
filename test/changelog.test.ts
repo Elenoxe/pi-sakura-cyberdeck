@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { stripVTControlCharacters } from "node:util";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import sakuraChangelog, {
 	compareVersions,
@@ -111,4 +112,25 @@ test("changelog viewer clamps its scroll offset after width and height changes",
 			},
 		},
 	} as never);
+});
+
+test("notice and full changelog wrap hanging bullets without dropping text", () => {
+	const themes = [plain, {
+		fg: (_c: string, text: string) => `\x1b[36m${text}\x1b[39m`,
+		bold: (text: string) => text,
+	}];
+	for (const text of ["first ABCDEFGHIJKLMNOPQR last", "日本語🎉 ABCDEFGHIJKLMNOPQR 最後"]) {
+		const entries = parseChangelog(`## 1.2.0\n- ${text}`);
+		for (const width of [2, 4, 5, 8, 12, 20, 40]) {
+			for (const theme of themes) {
+				const notice = renderNoticeLines(entries, width, theme);
+				const full = renderChangelogLines(entries, width, theme);
+				for (const [lines, body] of [[notice, notice.slice(1, -1)], [full, full.slice(1)]]) {
+					assert.ok(lines!.every((line) => visibleWidth(line) <= width), `width ${width}`);
+					const recovered = body!.map(stripVTControlCharacters).join("").replace(/[•\s]/g, "");
+					assert.equal(recovered, text.replace(/\s/g, ""), `width ${width}: ${body!.join("|")}`);
+				}
+			}
+		}
+	}
 });
