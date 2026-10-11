@@ -11,6 +11,7 @@ import {
 	mergeConfig,
 	removeLegacyFixedEditorConfig,
 	saveAnimationsPatch,
+	saveExtensionStatusColorMode,
 	saveExtensionStatusPlacement,
 	saveUiFeaturesPatch,
 } from "../extensions/zentui/config";
@@ -111,4 +112,26 @@ test("saving UI switches preserves resolved legacy message styling independently
 	}
 	const missing = tempConfig();
 	assert.equal(saveUiFeaturesPatch({ editor: false }, missing).features.messageStyle, true);
+});
+
+test("partial extension status settings keep default placements and valid overrides", () => {
+	for (const extensionStatuses of [
+		{}, { colorModes: { other: "original" } }, { placements: { other: "left", "codex-goal": "invalid" } },
+	]) {
+		const config = mergeConfig({ extensionStatuses });
+		assert.equal(getExtensionStatusPlacement(config, "codex-goal"), "middle");
+		assert.equal(getExtensionStatusPlacement(config, "xai-usage"), "right");
+		assert.equal(Object.getPrototypeOf(config.extensionStatuses.placements), null);
+	}
+	const overridden = mergeConfig({ extensionStatuses: { placements: { "codex-goal": "off" } } });
+	assert.equal(getExtensionStatusPlacement(overridden, "codex-goal"), "off");
+	const path = tempConfig();
+	const saved = saveExtensionStatusColorMode("other", "original", path);
+	assert.equal(getExtensionStatusPlacement(saved, "codex-goal"), "middle");
+	assert.equal(getExtensionStatusColorMode(saved, "other"), "original");
+	const reloaded = loadConfigWithDiagnostics(path).config;
+	assert.equal(getExtensionStatusPlacement(reloaded, "codex-goal"), "middle");
+	const placed = saveExtensionStatusPlacement("other", "left", path);
+	assert.equal(getExtensionStatusPlacement(placed, "codex-goal"), "middle");
+	assert.equal(getExtensionStatusPlacement(placed, "other"), "left");
 });

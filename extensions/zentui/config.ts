@@ -544,14 +544,15 @@ function normalizeExtensionStatuses(record: Record<string, unknown>): ExtensionS
 	const defaultPlacement = isExtensionStatusPlacement(record.defaultPlacement)
 		? record.defaultPlacement
 		: "right";
-	const placements = nullProtoRecord(
-		isRecord(record.placements)
+	const placements = nullProtoRecord([
+		...Object.entries(DEFAULT_EXTENSION_PLACEMENTS),
+		...(isRecord(record.placements)
 			? Object.entries(record.placements).filter(
 					(entry): entry is [string, ExtensionStatusPlacement] =>
 						isExtensionStatusPlacement(entry[1]),
 				)
-			: [],
-	);
+			: []),
+	]);
 	const colorModes = nullProtoRecord(
 		isRecord(record.colorModes)
 			? Object.entries(record.colorModes).filter(
@@ -690,13 +691,9 @@ export function mergeConfig(parsed: unknown): PolishedTuiConfig {
 	const config = isRecord(parsed) ? parsed : {};
 	const iconsRecord = isRecord(config.icons) ? config.icons : {};
 	const colors = isRecord(config.colors) ? normalizeColors(config.colors) : {};
-	const extensionStatuses = isRecord(config.extensionStatuses)
-		? normalizeExtensionStatuses(config.extensionStatuses)
-		: {
-				defaultPlacement: "right" as const,
-				placements: nullProtoRecord(Object.entries(DEFAULT_EXTENSION_PLACEMENTS)),
-				colorModes: nullProtoRecord<ExtensionStatusColorMode>([]),
-			};
+	const extensionStatuses = normalizeExtensionStatuses(
+		isRecord(config.extensionStatuses) ? config.extensionStatuses : {},
+	);
 	return {
 		projectRefreshIntervalMs: parseProjectRefreshIntervalMs(config.projectRefreshIntervalMs),
 		footerFormat: stringValue(config, "footerFormat") ?? DEFAULT_FOOTER_FORMAT,
