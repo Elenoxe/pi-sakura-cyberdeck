@@ -821,6 +821,8 @@ export function saveUiFeaturesPatch(
 			: {};
 		record.features = {
 			...existing,
+			// Resolve legacy coupling before changing any independent feature switch.
+			messageStyle: mergeConfig(record).features.messageStyle,
 			...validUiFeatureEntries(patch),
 		};
 	});

@@ -94,3 +94,21 @@ test("extension status placements are own-property lookups (no prototype keys)",
 	assert.equal(getExtensionStatusPlacement(saved, "__proto__"), "off");
 	assert.equal(getExtensionStatusPlacement(saved, "other"), "right");
 });
+
+test("saving UI switches preserves resolved legacy message styling independently", () => {
+	for (const features of [undefined, {}, { editor: false }, { editor: true }, { messageStyle: false }]) {
+		const path = tempConfig(JSON.stringify({ features, separator: "dot" }));
+		const before = loadConfigWithDiagnostics(path).config.features.messageStyle;
+		for (const editor of [false, true, false]) {
+			const saved = saveUiFeaturesPatch({ editor }, path);
+			assert.equal(saved.features.editor, editor);
+			assert.equal(saved.features.messageStyle, before);
+			assert.equal(loadConfigWithDiagnostics(path).config.features.messageStyle, before);
+			assert.equal(JSON.parse(readFileSync(path, "utf8")).separator, "dot");
+		}
+		const explicit = saveUiFeaturesPatch({ editor: false, messageStyle: !before }, path);
+		assert.equal(explicit.features.messageStyle, !before, "explicit patch wins");
+	}
+	const missing = tempConfig();
+	assert.equal(saveUiFeaturesPatch({ editor: false }, missing).features.messageStyle, true);
+});
