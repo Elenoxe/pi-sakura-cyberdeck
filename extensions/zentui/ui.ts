@@ -4,6 +4,8 @@ import {
 	type EditorComponent,
 	type EditorTheme,
 	type TUI,
+	type TuiMouseEvent,
+	type TuiMouseEventResult,
 	truncateToWidth,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
@@ -93,7 +95,24 @@ type PolishedFrameOptions = {
 	modelMeta: EditorMeta;
 	thinkingLevel: string | undefined;
 	rightStatus?: string;
+	setMouseLayout: (layout: EditorMouseLayout) => void;
 };
+
+type EditorMouseLayout = {
+	rows: ({ x: number; y: number } | undefined)[];
+	width: number;
+	height: number;
+};
+
+function mapEditorMouse(
+	event: TuiMouseEvent,
+	layout: EditorMouseLayout | undefined,
+): TuiMouseEvent | undefined {
+	if (!layout) return event;
+	const row = layout.rows[event.y];
+	if (!row || event.x < row.x) return undefined;
+	return { ...event, x: event.x - row.x, y: row.y, width: layout.width, height: layout.height };
+}
 
 function clampRenderedLines(lines: string[], width: number): string[] {
 	const maxWidth = Math.max(0, width);
@@ -212,21 +231,20 @@ function isZentuiMetaLine(line: string): boolean {
  * wrapping our editor). Drop only lines Zentui tagged, plus the blank spacer
  * lines directly around them.
  */
-function removeZentuiMetaLines(lines: string[]): { lines: string[]; removed: boolean } {
-	if (!lines.some(isZentuiMetaLine)) return { lines, removed: false };
-	const result: string[] = [];
-	for (let index = 0; index < lines.length; index++) {
+function editorBodyIndexes(lines: string[]): number[] {
+	const indexes = lines.map((_, index) => index);
+	if (!lines.some(isZentuiMetaLine)) return indexes;
+	const result = indexes.filter((index) => {
 		const line = lines[index] ?? "";
-		if (isZentuiMetaLine(line)) continue;
+		if (isZentuiMetaLine(line)) return false;
 		const blank = !plainRenderedText(line).trim();
 		const nearMeta =
 			isZentuiMetaLine(lines[index - 1] ?? "") || isZentuiMetaLine(lines[index + 1] ?? "");
-		if (blank && nearMeta) continue;
-		result.push(line);
-	}
+		return !(blank && nearMeta);
+	});
 	// The stale frame also leaves its leading spacer line behind.
-	if (result.length > 0 && !plainRenderedText(result[0] ?? "").trim()) result.shift();
-	return { lines: result, removed: true };
+	if (result.length > 0 && !plainRenderedText(lines[result[0]!] ?? "").trim()) result.shift();
+	return result;
 }
 
 /** Split base editor output into body and trailing autocomplete lines. */
@@ -234,21 +252,27 @@ function splitEditorRender(
 	lines: string[],
 	borderIndexes: number[],
 	isShowingAutocomplete: boolean,
-): { body: string[]; autocomplete: string[] } | undefined {
+): { body: string[]; autocomplete: string[]; bodyStart: number; autocompleteStart: number } | undefined {
 	if (borderIndexes.length >= 2) {
 		const top = borderIndexes[0] ?? 0;
 		const bottom = borderIndexes[borderIndexes.length - 1] ?? lines.length - 1;
-		return { body: lines.slice(top + 1, bottom), autocomplete: lines.slice(bottom + 1) };
+		return {
+			body: lines.slice(top + 1, bottom), autocomplete: lines.slice(bottom + 1),
+			bodyStart: top + 1, autocompleteStart: bottom + 1,
+		};
 	}
 	if (lines.length < 2) return undefined;
 	if (isShowingAutocomplete) {
 		for (let index = lines.length - 1; index >= 1; index--) {
 			if (isHorizontalBorder(lines[index] ?? "")) {
-				return { body: lines.slice(1, index), autocomplete: lines.slice(index + 1) };
+				return {
+					body: lines.slice(1, index), autocomplete: lines.slice(index + 1),
+					bodyStart: 1, autocompleteStart: index + 1,
+				};
 			}
 		}
 	}
-	return { body: lines.slice(1, -1), autocomplete: [] };
+	return { body: lines.slice(1, -1), autocomplete: [], bodyStart: 1, autocompleteStart: lines.length };
 }
 
 function vimModeColor(mode: string): string {
@@ -287,6 +311,7 @@ function renderPolishedFrame({
 	modelMeta,
 	thinkingLevel,
 	rightStatus,
+	setMouseLayout,
 }: PolishedFrameOptions): string[] {
 	if (width <= 2) return clampRenderedLines(baseRendered, width);
 
@@ -298,7 +323,8 @@ function renderPolishedFrame({
 
 	const split = splitEditorRender(baseRendered, borderIndexes, isShowingAutocomplete);
 	if (!split) return clampRenderedLines(baseRendered, width);
-	const editorLines = removeZentuiMetaLines(split.body).lines;
+	const bodyIndexes = editorBodyIndexes(split.body);
+	const editorLines = bodyIndexes.map((index) => split.body[index]!);
 	const autocompleteLines = split.autocomplete;
 	const model = renderStyleForSourceOrFallback(
 		uiTheme,
@@ -356,10 +382,24 @@ function renderPolishedFrame({
 				...autocompleteLines,
 			];
 
+	setMouseLayout({
+		rows: [
+			undefined,
+			undefined,
+			...bodyIndexes.map((index) => ({ x: railWidth, y: split.bodyStart + index })),
+			undefined,
+			undefined,
+			undefined,
+			...autocompleteLines.map((_, index) => ({ x: 0, y: split.autocompleteStart + index })),
+		],
+		width: innerWidth,
+		height: baseRendered.length,
+	});
 	return clampRenderedLines(renderedLines, width);
 }
 
 export class PolishedEditor extends CustomEditor {
+	private mouseLayout?: EditorMouseLayout;
 	private readonly getModelMeta: () => EditorMeta;
 	private readonly getThinkingLevel: () => string | undefined;
 	private readonly getConfig: () => PolishedTuiConfig;
@@ -383,6 +423,7 @@ export class PolishedEditor extends CustomEditor {
 	}
 
 	render(width: number): string[] {
+		this.mouseLayout = undefined;
 		if (width <= 2) {
 			return clampRenderedLines(super.render(width), width);
 		}
@@ -392,6 +433,9 @@ export class PolishedEditor extends CustomEditor {
 		const innerWidth = Math.max(0, width - railWidth);
 		const { lines, borders } = renderWithMarkedBorders(this, () => super.render(innerWidth));
 		return renderPolishedFrame({
+			setMouseLayout: (layout) => {
+				this.mouseLayout = layout;
+			},
 			width,
 			baseRendered: lines,
 			borderIndexes: borders,
@@ -402,9 +446,15 @@ export class PolishedEditor extends CustomEditor {
 			thinkingLevel: this.getThinkingLevel(),
 		});
 	}
+
+	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+		const mapped = mapEditorMouse(event, this.mouseLayout);
+		return mapped ? super.handleMouse(mapped) : undefined;
+	}
 }
 
 export class WrappedPolishedEditor implements EditorComponent {
+	private mouseLayout?: EditorMouseLayout;
 	constructor(
 		private readonly base: WrappedEditor,
 		private readonly uiTheme: Theme,
@@ -412,6 +462,11 @@ export class WrappedPolishedEditor implements EditorComponent {
 		private readonly getModelMeta: () => EditorMeta,
 		private readonly getThinkingLevel: () => string | undefined,
 	) {}
+
+	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+		const mapped = mapEditorMouse(event, this.mouseLayout);
+		return mapped ? this.base.handleMouse?.(mapped) : undefined;
+	}
 
 	get focused(): boolean {
 		return Boolean(this.base.focused);
@@ -491,6 +546,7 @@ export class WrappedPolishedEditor implements EditorComponent {
 	}
 
 	render(width: number): string[] {
+		this.mouseLayout = undefined;
 		if (width <= 2) return clampRenderedLines(this.base.render(width), width);
 
 		const config = this.getConfig();
@@ -504,6 +560,9 @@ export class WrappedPolishedEditor implements EditorComponent {
 			showingAutocomplete = this.base.isShowingAutocomplete?.() === true;
 		} catch {}
 		return renderPolishedFrame({
+			setMouseLayout: (layout) => {
+				this.mouseLayout = layout;
+			},
 			width,
 			baseRendered: lines,
 			borderIndexes: borders,
