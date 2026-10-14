@@ -25,6 +25,11 @@ test("direct commands require an exact target and action", () => {
 		feature: "messageStyle",
 		enabled: !defaultConfig.features.messageStyle,
 	});
+	for (const [action, enabled] of [["enable", true], ["disable", false], ["toggle", false]] as const) {
+		assert.deepEqual(parseDirectCommand(`thinking-rail ${action}`, defaultConfig), {
+			kind: "feature", feature: "thinkingRail", enabled,
+		});
+	}
 	assert.deepEqual(parseDirectCommand("pulse on", defaultConfig), {
 		kind: "footerPulse",
 		enabled: true,

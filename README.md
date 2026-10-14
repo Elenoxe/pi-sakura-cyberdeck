@@ -15,7 +15,7 @@ Lightweight Sakura Macaron visual pack for [Pi](https://pi.dev).
 | **Matrix** | Pastel digital-rain widget while working — **off by default**, `/sakura-matrix on` |
 | **Changelog** | One-time “what’s new” notice after updates, `/sakura-changelog` viewer |
 
-No runtime dependencies; everything uses Pi’s public extension API except three small, guarded render patches (user messages, tool card frames, selector borders).
+No runtime dependencies; everything uses Pi’s public extension API except four small, guarded render patches (user messages, tool card frames, selector borders, thinking rails).
 
 ## Look (v1.2)
 
@@ -54,7 +54,9 @@ No runtime dependencies; everything uses Pi’s public extension API except thre
 
 - Tool cards: sakura frame + status rail (sky running / mint done / coral failed); the body is Pi’s own render, byte-for-byte
 - `!cmd` output, edit diffs and images: stock Pi
-- Hidden thinking shows a sakura `✦ Thought` label; visible thinking is stock Pi
+- Thinking: Sakura `✦ Thought trail` tree around Pi’s native Markdown; expanded blocks show complete content within upstream’s 100-column rendering limit, with Pi owning the toggle state. One native left-padding column is removed, and the title symbol, title text, branches and diamonds each use an independent Sakura gradient.
+- Collapsed `✦ Thought trail` previews retain line breaks within each `◇` node, but limit each node to 100 display columns of text in total, with a single trailing `...` when truncated. The full preview shows up to 8 nonblank body lines, then a separate `… +N more` hint for additional preview lines; its shortcut follows Pi’s current Thinking keybinding. Both views keep upstream’s compact spacing between nodes.
+- Disable the tree with `/zentui thinking-rail disable`; message styling off or copy-friendly mode restores native Thinking.
 
 ## Requirements
 
@@ -129,7 +131,8 @@ Zentui config file: `~/.pi/agent/sakura-cyberdeck-zentui.json` (edit with `/zent
     "editorBorder": "sakura-macaron-gradient"
   },
   "features": {
-    "messageStyle": true      // sakura frames for messages and tool cards
+    "messageStyle": true,     // sakura frames for messages and tool cards
+    "thinkingRail": true      // native Thinking with Sakura tree rails
   },
   "animations": {
     "footerPulse": false      // animate footer gradients while the agent works
@@ -143,7 +146,7 @@ Matrix settings live in `~/.pi/agent/sakura-cyberdeck-matrix.json` (edit with `/
 
 ```text
 /zentui                                   settings UI (editor, footer, messages, icons, colors…)
-/zentui editor|statusline|messages|copy-friendly|pulse on|off|toggle
+/zentui editor|statusline|messages|thinking-rail|copy-friendly|pulse on|off|toggle
 /zentui format "<template>"               custom footer format ("" = segment layout)
 
 /sakura-matrix [status]                   current rain settings

@@ -32,6 +32,7 @@ test("defaults have a single source of truth", () => {
 	assert.equal(defaultConfig.icons.editorPrompt, "");
 	assert.equal(defaultConfig.animations.footerPulse, false);
 	assert.equal(defaultConfig.features.messageStyle, true);
+	assert.equal(defaultConfig.features.thinkingRail, true);
 	assert.equal(defaultConfig.colors.editorThinkingMax, "bold #FF8FA3");
 	const ascii = mergeConfig({ icons: { mode: "ascii" } });
 	assert.equal(ascii.icons.rail, "|");
@@ -134,4 +135,15 @@ test("partial extension status settings keep default placements and valid overri
 	const placed = saveExtensionStatusPlacement("other", "left", path);
 	assert.equal(getExtensionStatusPlacement(placed, "codex-goal"), "middle");
 	assert.equal(getExtensionStatusPlacement(placed, "other"), "left");
+});
+
+test("thinking rail switch is validated, saved and reloaded independently", () => {
+	const path = tempConfig();
+	assert.equal(mergeConfig({ features: { thinkingRail: "false" } }).features.thinkingRail, true);
+	for (const thinkingRail of [false, true]) {
+		const saved = saveUiFeaturesPatch({ thinkingRail }, path);
+		assert.equal(saved.features.thinkingRail, thinkingRail);
+		assert.equal(saved.features.messageStyle, true);
+		assert.equal(loadConfigWithDiagnostics(path).config.features.thinkingRail, thinkingRail);
+	}
 });

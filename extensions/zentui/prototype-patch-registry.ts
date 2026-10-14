@@ -6,6 +6,7 @@ export const ZENTUI_PROTOTYPE_PATCH_REGISTRY = Symbol.for(
 
 export type PrototypePatchAdapter =
 	| "user-message-render"
+	| "assistant-thinking-rail"
 	| "selector-border-render"
 	| "tool-execution-render"
 	| "tool-execution-mouse";

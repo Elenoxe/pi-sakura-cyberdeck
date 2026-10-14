@@ -112,6 +112,7 @@ const featureSettingLabels: Record<FeatureSettingId, string> = {
 	editor: "Editor",
 	statusLine: "Status line",
 	messageStyle: "Message & tool styling",
+	thinkingRail: "Thinking Rail",
 	copyFriendly: "Copy-friendly mode",
 };
 
@@ -120,6 +121,7 @@ const featureSettingDescriptions: Record<FeatureSettingId, string> = {
 	statusLine: "Enable or disable Zentui's custom footer/status line.",
 	messageStyle:
 		"Style previous user messages, tool blocks, thinking labels and selector borders. Independent of the editor.",
+	thinkingRail: "Decorate native expanded thinking with the Sakura Thought trail. Hidden in copy-friendly mode.",
 	copyFriendly:
 		"Hide editor and previous-message rail glyphs for cleaner native terminal selection.",
 };
@@ -177,6 +179,7 @@ const directTargets: Record<string, DirectTarget> = {
 	footer: "statusLine",
 	messages: "messageStyle",
 	"message-style": "messageStyle",
+	"thinking-rail": "thinkingRail",
 	"copy-friendly": "copyFriendly",
 	copyfriendly: "copyFriendly",
 	copy: "copyFriendly",
@@ -206,6 +209,9 @@ const directCommandSuggestions = [
 	"messages enable",
 	"messages disable",
 	"messages toggle",
+	"thinking-rail enable",
+	"thinking-rail disable",
+	"thinking-rail toggle",
 	"copy-friendly enable",
 	"copy-friendly disable",
 	"copy-friendly toggle",
@@ -336,7 +342,7 @@ function footerSegmentPatch(
 }
 
 export function usageText(): string {
-	return 'Usage: /zentui [editor|statusline|messages|copy-friendly|pulse] [enable|disable|toggle] or /zentui format "<template>"';
+	return 'Usage: /zentui [editor|statusline|messages|thinking-rail|copy-friendly|pulse] [enable|disable|toggle] or /zentui format "<template>"';
 }
 
 function featureNotification(

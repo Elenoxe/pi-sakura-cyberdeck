@@ -54,7 +54,7 @@ import { installSelectorBorderStyle } from "./selector-border";
 import { SessionLifecycle } from "./session-lifecycle";
 import { FIXED_EDITOR_REMOVED_MESSAGE, registerZentuiSettingsCommand } from "./settings-command";
 import { createInitialState, type FooterState, syncState } from "./state";
-import { applyThinkingLabel } from "./thinking-message";
+import { applyThinkingLabel, installThinkingRail, thinkingRailEnabled } from "./thinking-message";
 import { installToolExecutionStyle } from "./tool-execution";
 import { PolishedEditor, WrappedPolishedEditor } from "./ui";
 import { installUserMessageStyle } from "./user-message";
@@ -256,13 +256,14 @@ export default function (pi: ExtensionAPI) {
 		const cleanupSelectorBorderStyle = installSelectorBorderStyle(getActiveTheme, getCurrentConfig);
 		const cleanupUserMessageStyle = installUserMessageStyle(() => ctx.ui.theme, getCurrentConfig);
 		const cleanupToolExecutionStyle = installToolExecutionStyle(getActiveTheme);
+		const cleanupThinkingRail = installThinkingRail(getCurrentConfig);
 		cleanupPrototypePatches = () => {
+			cleanupThinkingRail();
 			cleanupToolExecutionStyle();
 			cleanupSelectorBorderStyle();
 			cleanupUserMessageStyle();
 		};
 		prototypePatchesInstalled = true;
-		applyThinkingLabel(ctx);
 	};
 
 	const uninstallPrototypePatches = (ctx?: ExtensionContext) => {
@@ -401,6 +402,7 @@ export default function (pi: ExtensionAPI) {
 		if (currentConfig.features.messageStyle) installPrototypePatches(ctx);
 		else if (prototypePatchesInstalled) uninstallPrototypePatches(ctx);
 
+		applyThinkingLabel(ctx, thinkingRailEnabled(currentConfig));
 		if (currentConfig.features.editor) {
 			const currentFactory = ctx.ui.getEditorComponent();
 			const editorMissingOrReplaced = !editorInstalled || !isZentuiEditorFactory(currentFactory);

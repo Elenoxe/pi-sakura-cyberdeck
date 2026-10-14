@@ -13,22 +13,26 @@ type Handler = (event: unknown, ctx: unknown) => unknown;
 async function setup() {
 	const { default: zentui } = await import("../extensions/zentui/index");
 	const handlers = new Map<string, Handler[]>();
+	const commands = new Map<string, (args: string, ctx: unknown) => Promise<void>>();
 	const pi = {
 		on(event: string, handler: Handler) {
 			handlers.set(event, [...(handlers.get(event) ?? []), handler]);
 		},
-		registerCommand() {},
+		registerCommand(name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) {
+			commands.set(name, command.handler);
+		},
 		getThinkingLevel: () => "off",
 	};
 	zentui(pi as never);
 	const emit = async (event: string, payload: unknown, ctx: unknown) => {
 		for (const handler of handlers.get(event) ?? []) await handler(payload, ctx);
 	};
-	return { emit };
+	return { emit, command: (args: string, ctx: unknown) => commands.get("zentui")!(args, ctx) };
 }
 
 function makeCtx() {
 	const notices: string[] = [];
+	const labels: (string | undefined)[] = [];
 	let footerFactory: ((...args: unknown[]) => { render(width: number): string[]; dispose?(): void }) | undefined;
 	let footer: { render(width: number): string[]; dispose?(): void } | undefined;
 	let editorFactory: unknown;
@@ -48,6 +52,7 @@ function makeCtx() {
 		ui: {
 			theme,
 			notify: (message: string) => notices.push(message),
+			setHiddenThinkingLabel: (label?: string) => labels.push(label),
 			setFooter(factory: typeof footerFactory) {
 				footer?.dispose?.();
 				footerFactory = factory;
@@ -67,7 +72,7 @@ function makeCtx() {
 			getEditorComponent: () => editorFactory,
 		},
 	};
-	return { ctx, notices, footer: () => footer, footerFactory: () => footerFactory, editor: () => editorFactory };
+	return { ctx, notices, labels, footer: () => footer, footerFactory: () => footerFactory, editor: () => editorFactory };
 }
 
 test("session lifecycle: config diagnostics, footer render, idempotent shutdown", async () => {
@@ -111,4 +116,41 @@ test("non-TUI modes install nothing", async () => {
 	assert.equal(rpc.footerFactory(), undefined);
 	assert.equal(rpc.editor(), undefined);
 	await emit("session_shutdown", {}, rpc.ctx);
+});
+
+test("thinking rail settings and hidden label follow config, session switches and reload", async () => {
+	const { AssistantMessageComponent } = await import("@earendil-works/pi-coding-agent");
+	const originalRender = AssistantMessageComponent.prototype.render;
+	writeFileSync(configFile, JSON.stringify({ features: { editor: false, statusLine: false, messageStyle: true } }));
+	let runtime = await setup();
+	let view = makeCtx();
+	await runtime.emit("session_start", {}, view.ctx);
+	try {
+		assert.notEqual(AssistantMessageComponent.prototype.render, originalRender);
+		assert.ok(view.labels.at(-1)?.includes("✦"));
+		for (const [args, decorated] of [
+			["thinking-rail disable", false], ["thinking-rail enable", true],
+			["copy-friendly enable", false], ["copy-friendly disable", true],
+			["messages disable", false], ["messages enable", true],
+			["thinking-rail toggle", false],
+		] as const) {
+			await runtime.command(args, view.ctx);
+			assert.equal(view.labels.at(-1) !== undefined, decorated, args);
+		}
+		assert.equal(JSON.parse(readFileSync(configFile, "utf8")).features.thinkingRail, false);
+		await runtime.emit("session_start", {}, view.ctx);
+		assert.equal(view.labels.at(-1), undefined, "session switch loads the saved setting");
+		await runtime.emit("session_shutdown", {}, view.ctx);
+		assert.equal(AssistantMessageComponent.prototype.render, originalRender);
+		runtime = await setup();
+		view = makeCtx();
+		await runtime.emit("session_start", {}, view.ctx);
+		assert.equal(view.labels.at(-1), undefined, "reload keeps the saved setting");
+		await runtime.command("thinking-rail enable", view.ctx);
+		assert.ok(view.labels.at(-1)?.includes("✦"));
+	} finally {
+		await runtime.emit("session_shutdown", {}, view.ctx);
+	}
+	assert.equal(AssistantMessageComponent.prototype.render, originalRender);
+	assert.equal(view.labels.at(-1), undefined);
 });
