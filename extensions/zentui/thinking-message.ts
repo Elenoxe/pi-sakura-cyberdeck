@@ -22,8 +22,21 @@ const MIN_WIDTH = PREFIX_WIDTH + 3;
 const PREVIEW_LINES = 8;
 const MAX_BODY_WIDTH = 100;
 const MAX_PREVIEW_NODE_WIDTH = 100;
+const wordSegmenter = new Intl.Segmenter(undefined, { granularity: "word" });
 
 type ThinkingRow = { line: string; index: number };
+
+function thinkingWordPrefix(line: string, columns: number): string {
+	const text = stripVTControlCharacters(line);
+	let width = 0;
+	let end = 0;
+	for (const word of wordSegmenter.segment(text)) {
+		width += visibleWidth(word.segment);
+		if (width > columns) break;
+		end = word.index + word.segment.length;
+	}
+	return sliceByColumn(line, 0, visibleWidth(text.slice(0, end).trimEnd()), true);
+}
 
 function truncateThinkingNode(rows: ThinkingRow[], rowWidth: number): ThinkingRow[] {
 	const nodeWidth = rows.reduce((total, { line }) => total + visibleWidth(line), 0);
@@ -34,10 +47,18 @@ function truncateThinkingNode(rows: ThinkingRow[], rowWidth: number): ThinkingRo
 	for (const row of rows) {
 		const lineWidth = visibleWidth(row.line);
 		if (lineWidth > remaining) {
-			preview.push({
-				...row,
-				line: truncateToWidth(`${row.line}${ellipsis}`, Math.min(rowWidth, remaining + ellipsis.length), ellipsis),
-			});
+			let ending = row;
+			let columns = Math.min(remaining, rowWidth - ellipsis.length);
+			let prefix = thinkingWordPrefix(ending.line, columns);
+			// Keep tiny truncation tails on the preceding row.
+			if (visibleWidth(stripVTControlCharacters(prefix).trim()) <= ellipsis.length && preview.length > 0) {
+				ending = preview.pop()!;
+				columns = Math.min(visibleWidth(ending.line) + remaining, rowWidth - ellipsis.length);
+				prefix = thinkingWordPrefix(ending.line, columns);
+			}
+			// An unbroken token may itself exceed the available width.
+			if (!stripVTControlCharacters(prefix).trim()) prefix = sliceByColumn(ending.line, 0, columns, true);
+			preview.push({ ...ending, line: `${prefix}${ellipsis}` });
 			break;
 		}
 		preview.push(row);

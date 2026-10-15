@@ -403,15 +403,15 @@ test("mouse forwarding includes the removed padding and native 100-column width"
 
 test("node preview preserves its line breaks and applies one shared text budget", () => {
 	const component = new AssistantMessageComponent(message(
-		`${"A".repeat(40)}\n${"B".repeat(40)}\n${"C".repeat(40)}\n\n${"D".repeat(40)}\n${"E".repeat(40)}`,
+		`${"Alpha ".repeat(6).trim()}\n${"Bravo ".repeat(6).trim()}\n${"Charlie ".repeat(6).trim()}\n\n${"D".repeat(40)}\n${"E".repeat(40)}`,
 	), true);
 	const body = component.render(60).map(strip).slice(2).map((line) => line.slice(7));
 	assert.deepEqual(body, [
-		"A".repeat(40), "B".repeat(40), `${"C".repeat(17)}...`,
+		"Alpha ".repeat(6).trim(), "Bravo ".repeat(6).trim(), "Charlie Charlie Charlie...",
 		"D".repeat(40), "E".repeat(40),
 	]);
 	assert.equal(body.filter((line) => line.endsWith("...")).length, 1);
-	assert.equal(body.slice(0, 3).reduce((columns, line) => columns + visibleWidth(line), 0), 100);
+	assert.equal(body.slice(0, 3).reduce((columns, line) => columns + visibleWidth(line), 0), 96);
 });
 
 test("100-column nodes remain complete; longer Unicode nodes get only one ellipsis", () => {
@@ -425,13 +425,44 @@ test("100-column nodes remain complete; longer Unicode nodes get only one ellips
 	}
 });
 
-test("the eight-line preview limit applies after node shortening, without row ellipses", () => {
+test("the eight-line preview counts shortened nodes without orphan ellipsis rows", () => {
 	const component = new AssistantMessageComponent(message(`${"字🌸".repeat(35)}\n\nShort.`), true);
 	const lines = component.render(20).map(strip);
 	const body = lines.slice(2, 10);
 	assert.equal(body.length, 8);
-	assert.ok(body.every((line) => !line.endsWith("...")), "the node's ellipsis is beyond the visible eight rows");
-	assert.ok(lines.at(-1)!.includes("… +2 more"));
+	assert.equal(body.filter((line) => line.endsWith("...")).length, 1);
+	assert.ok(body.every((line) => line.slice(7).trim() !== "..."));
+	assert.ok(lines.at(-1)!.includes("… +1 more"));
 	assert.ok(lines.every((line) => visibleWidth(line) <= 20));
 	assert.ok(component.render(10).every((line) => visibleWidth(line) <= 10));
+});
+
+test("screenshot prose ends on the preceding line instead of a clipped-word tail", () => {
+	for (const content of [
+		"I need to think through how to respond to an ambiguous commit message. It might be better to clarify the request before making changes.",
+		"I'm thinking through the issue of a missing title. It seems like I need to read it using ffgrep, but I should confirm the request first.",
+		"I find myself wondering if I need to read the documentation for the task pi extension completely. I should inspect the relevant files first.",
+	]) {
+		const component = new AssistantMessageComponent(message(content), true);
+		const body = component.render(180).map(strip).slice(2).map((line) => line.slice(7));
+		assert.equal(body.length, 1);
+		assert.ok(body[0]!.endsWith("..."));
+		assert.ok(!body[0]!.endsWith("clari...") && !body[0]!.endsWith("b..."));
+		assert.ok(visibleWidth(body[0]!) <= 100);
+		component.setHideThinkingBlock(false);
+		assert.equal(component.render(180).map(strip).slice(2).map((line) => line.slice(7).trim()).join(" "), content);
+	}
+});
+
+test("tiny complete-word tails also stay on the previous line", () => {
+	const content = `${"Alpha ".repeat(16).trim()}\na longer explanation that exceeds the node budget`;
+	const component = new AssistantMessageComponent(message(content), true);
+	const body = component.render(180).map(strip).slice(2).map((line) => line.slice(7));
+	assert.deepEqual(body, [`${"Alpha ".repeat(16).trim()}...`]);
+});
+
+test("an oversized first token still gets a useful prefix within the node budget", () => {
+	const component = new AssistantMessageComponent(message("x".repeat(200)), true);
+	const body = component.render(180).map(strip).slice(2).map((line) => line.slice(7));
+	assert.deepEqual(body, [`${"x".repeat(97)}...`]);
 });

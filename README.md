@@ -55,7 +55,7 @@ No runtime dependencies; everything uses Pi’s public extension API except four
 - Tool cards: sakura frame + status rail (sky running / mint done / coral failed); the body is Pi’s own render, byte-for-byte
 - `!cmd` output, edit diffs and images: stock Pi
 - Thinking: Sakura `✦ Thought trail` tree around Pi’s native Markdown; expanded blocks show complete content within upstream’s 100-column rendering limit, with Pi owning the toggle state. One native left-padding column is removed, and the title symbol, title text, branches and diamonds each use an independent Sakura gradient.
-- Collapsed `✦ Thought trail` previews retain line breaks within each `◇` node, but limit each node to 100 display columns of text in total, with a single trailing `...` when truncated. The full preview shows up to 8 nonblank body lines, then a separate `… +N more` hint for additional preview lines; its shortcut follows Pi’s current Thinking keybinding. Both views keep upstream’s compact spacing between nodes.
+- Collapsed `✦ Thought trail` previews retain line breaks within each `◇` node, but limit each node to 100 display columns of text in total, with a single trailing `...` when truncated. Truncation prefers word boundaries and keeps tiny continuation fragments or a lone ellipsis on the preceding line. The full preview shows up to 8 nonblank body lines, then a separate `… +N more` hint for additional preview lines; its shortcut follows Pi’s current Thinking keybinding. Both views keep upstream’s compact spacing between nodes.
 - Disable the tree with `/zentui thinking-rail disable`; message styling off or copy-friendly mode restores native Thinking.
 
 ## Requirements
