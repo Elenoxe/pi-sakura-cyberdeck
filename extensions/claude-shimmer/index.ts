@@ -6,7 +6,7 @@
  * - Thinking: the effort tag breathes between its tier color and petal white
  * - Stall: after ~3s without stream updates the verb fades toward coral
  * - Tools: while a tool executes, the verb pulses toward mint
- * - HUD: ( EFFORT · ↓ N tokens · mm:ss ); "~" marks a live estimate
+ * - HUD: ( EFFORT · ↓ N tokens · N tok/s · mm:ss ); "~" marks a live estimate
  *
  * Lightweight by design: a single ~11 Hz clock drives the glyph, sweep, dots and
  * token tween while the agent streams; zero timers when idle; no output outside TUI.
@@ -306,6 +306,7 @@ export default function claudeShimmer(pi: ExtensionAPI) {
   let runOutcome: RunOutcome = "completed";
   let completedTokens = 0;
   let completedEstimated = false;
+  let lastRate: number | null = null;
 
   // Current assistant message.
   let mode: SpinnerMode = "requesting";
@@ -316,6 +317,8 @@ export default function claudeShimmer(pi: ExtensionAPI) {
   let reportedTokens: number | null = null;
   const blockUnits = new Map<number, number>();
   let estimateUnits = 0;
+  let streamStart: number | null = null;
+  let rateSamples: Array<{ at: number; units: number }> = [];
 
   // Animation.
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -327,6 +330,15 @@ export default function claudeShimmer(pi: ExtensionAPI) {
   function tokenTarget(): TokenReading {
     const live = liveTokenReading(reportedTokens, currentEstimate());
     return { tokens: completedTokens + live.tokens, estimated: completedEstimated || live.estimated };
+  }
+
+  function tokenRate(now: number): number | null {
+    if (streamStart === null) return lastRate;
+    const elapsed = now - streamStart;
+    rateSamples = rateSamples.filter((sample) => sample.at > now - 3_000);
+    if (elapsed < 1_000) return null;
+    const units = rateSamples.reduce((sum, sample) => sum + sample.units, 0);
+    return Math.round(units / 4 * 1_000 / Math.min(elapsed, 3_000));
   }
 
   function effortTag(): string | undefined {
@@ -370,6 +382,8 @@ export default function claudeShimmer(pi: ExtensionAPI) {
     const target = tokenTarget();
     const arrow = mode === "requesting" ? "↑" : "↓";
     parts.push(paintFg(SKY, `${arrow} ${target.estimated ? "~" : ""}${formatTokenCount(displayedTokens)}`));
+    const rate = tokenRate(now);
+    if (rate !== null) parts.push(paintFg(SKY, `~${rate} tok/s`));
     parts.push(paintFg(MUTED, formatDigital(now - runStart)));
     const hud = `${paintFg(MUTED, "( ")}${parts.join(paintFg(MUTED, " · "))}${paintFg(MUTED, " )")}`;
     return `${glyph} ${verbText} ${hud}`;
@@ -423,6 +437,8 @@ export default function claudeShimmer(pi: ExtensionAPI) {
     blockUnits.clear();
     estimateUnits = 0;
     lastStreamAt = 0;
+    streamStart = null;
+    rateSamples = [];
   }
 
   function setBlockUnits(index: number, units: number) {
@@ -471,6 +487,7 @@ export default function claudeShimmer(pi: ExtensionAPI) {
       runOutcome = "completed";
       completedTokens = 0;
       completedEstimated = false;
+      lastRate = null;
       displayedTokens = 0;
       tick = 0;
     }
@@ -514,6 +531,10 @@ export default function claudeShimmer(pi: ExtensionAPI) {
       case "toolcall_delta":
         setBlockUnits(evt.contentIndex, (blockUnits.get(evt.contentIndex) ?? 0) + estimateTextTokenUnits(evt.delta));
         lastStreamAt = Date.now();
+        if (evt.delta.length > 0) {
+          streamStart ??= lastStreamAt;
+          rateSamples.push({ at: lastStreamAt, units: estimateTextTokenUnits(evt.delta) });
+        }
         break;
       case "text_end":
       case "thinking_end":
@@ -556,6 +577,7 @@ export default function claudeShimmer(pi: ExtensionAPI) {
     ctx_ = ctx;
     const message = event.message as AssistantTokenMessage;
     const final = finalTokenReading(message);
+    lastRate = tokenRate(Date.now());
     // Exactly once per finalized assistant message; totals accumulate across tool turns.
     completedTokens += final.tokens;
     completedEstimated ||= final.estimated;

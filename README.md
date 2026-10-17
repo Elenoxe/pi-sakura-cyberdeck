@@ -35,11 +35,12 @@ No runtime dependencies; everything uses Pi’s public extension API except four
 **Working line**
 
 ```text
-✻ Whisking...  ( HIGH · ↓ ~1.2k tokens · 00:12 )
+✻ Whisking...  ( HIGH · ↓ ~1.2k tokens · ~48 tok/s · 00:12 )
 ```
 
 - Effort MINIMAL→MAX, tier-colored; one verb per run
 - Tokens: `~` marks the live estimate; the provider’s final count replaces it and accumulates across tool turns
+- Speed: sky-colored estimated output `tok/s` over a 3-second sliding window, including thinking and tool arguments. Appears after one second of generation; streaming stalls count in full and reach `~0 tok/s` after three seconds without output. Freezes between messages, excluding first-token waits and tool execution.
 - Fades toward coral when the stream stalls; pulses mint while a tool runs
 - `✻ Whisked for 12s` after a successful run (whole-run time)
 
