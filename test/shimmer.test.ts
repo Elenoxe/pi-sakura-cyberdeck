@@ -204,7 +204,9 @@ test("completion notice uses whole-run time, fires once, only on success, at age
   await h.emit("message_end", { message: assistant("hi", { usage: { output: 5, input: 1 }, stopReason: "toolUse" }) });
   await h.emit("turn_end");
   await h.emit("turn_start");
-  mock.timers.tick(3_000);
+  mock.timers.tick(1_000);
+  await streamText(h, "a".repeat(400));
+  mock.timers.tick(2_000);
   await h.emit("message_end", { message: assistant("done", { usage: { output: 5, input: 1 }, stopReason: "stop" }) });
   await h.emit("agent_end", { messages: [assistant("done", { stopReason: "stop" })] });
   assert.equal(h.notices.length, 0, "agent_end must not announce (retries/compaction may follow)");
@@ -213,7 +215,7 @@ test("completion notice uses whole-run time, fires once, only on success, at age
   assert.equal(h.notices.length, 1);
   const [text, type] = h.notices[0]!;
   assert.equal(type, "info");
-  assert.match(strip(text), /^✻ \w+ for 7s$/);
+  assert.match(strip(text), /^✻ \w+ for 7s · 1 tok\/s$/);
 });
 
 test("no completion notice after Esc or error", async () => {

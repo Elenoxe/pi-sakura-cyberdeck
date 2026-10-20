@@ -17,7 +17,7 @@ Claude Code–style working spinner, recolored for sakura-macaron.
 - Effort tiers: MINIMAL / LOW / MEDIUM / HIGH / XHIGH / MAX (tier colors); the tag glows while the model thinks
 - Stall hint: after ~3s without stream updates the verb fades toward coral
 - Tool hint: while a tool runs, the verb pulses toward mint
-- Completion notice `✻ Baked for 12s` after successful runs only (nothing after Esc or errors)
+- Completion notice `✻ Baked for 12s · 48 tok/s` after successful runs only (nothing after Esc or errors); speed is total output tokens divided by whole-run elapsed time, including waits, tools and retries. `~` appears only when token totals contain estimates; speed is omitted for zero elapsed time.
 - Interactive TUI only; one ~11 Hz clock while the agent works, no timers when idle
 
 Fork of [pi-claude-shimmer](https://github.com/ouzhenkun/pi-claude-shimmer) (MIT).

@@ -463,7 +463,10 @@ export default function claudeShimmer(pi: ExtensionAPI) {
     const notice = completionNotice(outcome, elapsed);
     if (notice && ctx_ && isInteractiveTui(ctx_)) {
       try {
-        ctx_.ui.notify(`${paintFg(SAKURA, notice.slice(0, 1))}${paintFg(MUTED, notice.slice(1))}`, "info");
+        const speed = elapsed > 0
+          ? paintFg(SKY, ` · ${completedEstimated ? "~" : ""}${Math.round(completedTokens * 1_000 / elapsed)} tok/s`)
+          : "";
+        ctx_.ui.notify(`${paintFg(SAKURA, notice.slice(0, 1))}${paintFg(MUTED, notice.slice(1))}${speed}`, "info");
       } catch {}
     }
   }
